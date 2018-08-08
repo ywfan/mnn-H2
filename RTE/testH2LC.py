@@ -1,11 +1,15 @@
 """
-  MNN-H2
+  code for MNN-H2. Non-translation invariant case
+  reference:
+  Y Fan, J Feliu-Faba, L Lin, L Ying, L Zepeda-Núnez, A multiscale neural network based on
+  hierarchical nested bases, arXiv preprint arXiv:1808.02376
+
   written by Yuwei Fan (ywfan@stanford.edu)
 """
 # ------------------ keras ----------------
 from keras.models import Model
 # layers
-from keras.layers import Input, Conv1D, Flatten, Lambda
+from keras.layers import Input, Conv1D, LocallyConnected1D, ZeroPadding1D, Flatten, Lambda
 from keras.layers import Add, Reshape
 
 from keras import backend as K
@@ -25,10 +29,10 @@ import math, random
 
 K.set_floatx('float32')
 
-parser = argparse.ArgumentParser(description='NLSE - MNN-H2')
-parser.add_argument('--epoch', type=int, default=4000, metavar='N',
+parser = argparse.ArgumentParser(description='RTE - MNN-H2')
+parser.add_argument('--epoch', type=int, default=6000, metavar='N',
                     help='input number of epochs for training (default: %(default)s)')
-parser.add_argument('--input-prefix', type=str, default='nlse2v2', metavar='N',
+parser.add_argument('--input-prefix', type=str, default='rte1dv1g2', metavar='N',
                     help='prefix of input data filename (default: %(default)s)')
 parser.add_argument('--alpha', type=int, default=6, metavar='N',
                     help='number of channels for training (default: %(default)s)')
@@ -39,7 +43,7 @@ parser.add_argument('--n-cnn', type=int, default=5, metavar='N',
 parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
                     help='learning rate (default: %(default)s)')
 parser.add_argument('--batch-size', type=int, default=0, metavar='N',
-                    help='batch size (default: #train samples/100)')
+                    help='batch size (default: #train samples/50)')
 parser.add_argument('--verbose', type=int, default=2, metavar='N',
                     help='verbose (default: %(default)s)')
 parser.add_argument('--output-suffix', type=str, default='None', metavar='N',
@@ -81,15 +85,13 @@ def outputnewline():
     os.write('\n')
     os.flush()
 
-filenameIpt = data_path + 'Input_'  + args.input_prefix + '.h5'
-filenameOpt = data_path + 'Output_' + args.input_prefix + '.h5'
+filenameIpt = data_path + args.input_prefix + '.h5'
 
 # import data: size of data: Nsamples * Nx
-fInput = h5py.File(filenameIpt, 'r')
+fInput = h5py.File(filenameIpt,'r')
 InputArray = fInput['Input'][:]
-
-fOutput = h5py.File(filenameOpt, 'r')
-OutputArray = fOutput['Output'][:]
+OutputArray = fInput['Output'][:]
+mua = fInput['sa'][0]
 
 Nsamples = InputArray.shape[0]
 Nx = InputArray.shape[1]
@@ -97,7 +99,6 @@ Nx = InputArray.shape[1]
 output(args)
 outputnewline()
 output('Input data filename     = %s' % filenameIpt)
-output('Output data filename    = %s' % filenameOpt)
 output("Nx                      = %d" % Nx)
 output("Nsamples                = %d" % Nsamples)
 outputnewline()
@@ -116,19 +117,17 @@ n_test = min(n_train, n_test)
 n_test = max(n_test, 5000)
 
 if args.batch_size == 0:
-    BATCH_SIZE = n_train // 100
+    BATCH_SIZE = n_train // 50
 else:
     BATCH_SIZE = args.batch_size
 
 # pre-treat the data
 mean_out = np.mean(OutputArray[0:n_train, :])
-mean_in  = np.mean(InputArray[0:n_train, :])
-output("mean of input / output is %.6f\t %.6f" % (mean_in, mean_out))
-InputArray /= mean_in * 2
-InputArray -= 0.5
+InputArray += mua
 OutputArray -= mean_out
+output("mean of output is %.6f" % mean_out)
 
-X_train = InputArray[0:n_train, :]   #equal to 0:(n_train-1) in matlab
+X_train = InputArray[0:n_train, :]
 Y_train = OutputArray[0:n_train, :]
 X_test  = InputArray[(Nsamples-n_test):Nsamples, :]
 Y_test  = OutputArray[(Nsamples-n_test):Nsamples, :]
@@ -143,10 +142,6 @@ X_test  = np.reshape(X_test,  [X_test.shape[0],  X_test.shape[1], 1])
 # Nx = 2^L *m, L = k_multigrid-1
 m = Nx // (2**(k_multigrid - 1))
 output('m = %d' % m)
-
-# functions
-def padding(x, size):
-    return K.concatenate([x[:,x.shape[1]-size//2:x.shape[1],:], x, x[:,0:(size-size//2-1),:]], axis=1)
 
 # test
 def test_data(X, Y, string):
@@ -192,23 +187,23 @@ Ipt = Input(shape=(n_input,  1)) # Ipt = v
 Vv_list = []
 
 L = k_multigrid - 1
-Vv = Conv1D(alpha, m, strides=m, activation='linear')(Ipt)
+Vv = LocallyConnected1D(alpha, m, strides=m, activation='linear')(Ipt)
 Vv_list.insert(0, Vv)
 for ll in range(L-1, 1, -1):
-    Vv = Conv1D(alpha, 2, strides=2, activation='linear')(Vv)
+    Vv = LocallyConnected1D(alpha, 2, strides=2, activation='linear')(Vv)
     Vv_list.insert(0, Vv)
 
 MVv_list = []
 MVv = Vv_list[0]
 for i in range(0, N_cnn):
-    MVv = Lambda(lambda x: padding(x, 2*n_b_2+1))(MVv)
-    MVv = Conv1D(alpha, 2*n_b_2+1, activation='relu')(MVv)
+    MVv = ZeroPadding1D(n_b_2)(MVv)
+    MVv = LocallyConnected1D(alpha, 2*n_b_2+1, activation='relu')(MVv)
 MVv_list.append(MVv)
 for k in range(1, len(Vv_list)):
     MVv = Vv_list[k]
     for i in range(0, N_cnn):
-        MVv = Lambda(lambda x: padding(x, 2*n_b_l+1))(MVv)
-        MVv = Conv1D(alpha, 2*n_b_l+1, activation='relu')(MVv)
+        MVv = ZeroPadding1D(n_b_l)(MVv)
+        MVv = LocallyConnected1D(alpha, 2*n_b_l+1, activation='relu')(MVv)
     MVv_list.append(MVv)
 
 for ll in range(2, L):
@@ -216,19 +211,19 @@ for ll in range(2, L):
         chi = MVv_list[ll-2]
     else:
         chi = Add()([chi, MVv_list[ll-2]])
-    chi = Conv1D(2*alpha, 1, activation='linear')(chi)
+    chi = LocallyConnected1D(2*alpha, 1, activation='linear')(chi)
     chi = Reshape((2**(ll+1), alpha))(chi)
 chi = Add()([chi, MVv_list[L-2]])
-chi = Conv1D(m, 1, activation='linear')(chi)
+chi = LocallyConnected1D(m, 1, activation='linear')(chi)
 chi = Flatten()(chi)
 
 uad = Reshape((Nx//m, m))(Ipt)
 for i in range(0, N_cnn-1):
-    uad = Lambda(lambda x: padding(x, 2*n_b_ad+1))(uad)
-    uad = Conv1D(m, 2*n_b_ad+1, activation='relu')(uad)
+    uad = ZeroPadding1D(n_b_ad)(uad)
+    uad = LocallyConnected1D(m, 2*n_b_ad+1, activation='relu')(uad)
 
-uad = Lambda(lambda x: padding(x, 2*n_b_ad+1))(uad)
-uad = Conv1D(m, 2*n_b_ad+1, activation='linear')(uad)
+uad = ZeroPadding1D(n_b_ad)(uad)
+uad = LocallyConnected1D(m, 2*n_b_ad+1, activation='linear')(uad)
 uad = Flatten()(uad)
 
 Opt = Add()([chi, uad])
@@ -259,7 +254,7 @@ outputvec(err_test,  'Error for test data')
 
 os.close()
 
-log_os = open('trainresultH2.txt', "a")
+log_os = open('trainresultMix.txt', "a")
 log_os.write('%s\t%d\t%d\t%d\t' % (args.input_prefix, alpha, k_multigrid, N_cnn))
 log_os.write('%d\t%d\t%d\t%d\t' % (BATCH_SIZE, n_train, n_test, model.count_params()))
 log_os.write('%.3e\t%.3e\t' % (best_err_train, best_err_test))
