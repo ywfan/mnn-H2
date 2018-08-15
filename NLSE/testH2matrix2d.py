@@ -268,7 +268,7 @@ def CNNI2D(X, Nin, al_in, al_out, act_fun):
 # u^l = UMV^Tv: v --> Vv --> MVv --> ul = UMVv
 # uad = Aad v
 L = k_multigrid - 1
-# === Definition of matrix band sizes, see Property 1 of arXiv:1807.01883
+# === Definition of matrix band sizes, see Property 2 of arXiv:1807.01883
 n_b_2  = 2
 n_b_l  = 3
 n_b_ad = 1
