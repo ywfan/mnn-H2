@@ -9,7 +9,7 @@ The code to generate data is written by __MATLAB__ and the neural network is imp
 
 We take RTE as an example.
 
-The main file of the matlab code is __RTEsample1d.m__ for 1d and __RTEsample2d.m__ for 2d.
+The main file of the matlab code is __RTEsample1d.m__ for 1d and __RTEsample2d.m__ for 2d. Directly run it in MATLAB.
 
 The neural network use _argparse_ to set the parameters. One can use 
 ```
