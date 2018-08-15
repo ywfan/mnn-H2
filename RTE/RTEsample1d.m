@@ -45,7 +45,11 @@ parfor k = 1:Nsample
 end
 
 suffix = ['rte1dv2g', int2str(ng)];
-filename  = [suffix, '.h5'];
+data_path = 'data/';
+if ~exist(data_path, 'dir')
+    mkdir(data_path)
+end
+filename  = [data_path, suffix, '.h5'];
 if exist(filename, 'file') == 2
     delete(filename);
 end
