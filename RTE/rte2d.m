@@ -18,8 +18,7 @@ function [sol, mus] = rte2d(n, musfun, mufun, sr)
         GaussLegendreQuadrature(@(l) mufun(bsxfun(@minus, xs(1,:), l*lvar2x), bsxfun(@minus, xs(2,:), l*lvar2y))), ...
         length_d)) - 1), weight2./length_d), 1)';
     intgrl = intgrl + h*log(1+sqrt(2));
-    intgrl = -2/pi * intgrl;
-    intgrl = intgrl;
+    intgrl = 2/pi * intgrl;
 
     matK = Kfun(xs(:,:),xs(:,:), mufun)/N; % K*h^2
 
